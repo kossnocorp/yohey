@@ -44,7 +44,10 @@ jobs:
           export XDG_DATA_HOME="$RUNNER_TEMP/xdg data" XDG_BIN_HOME="$RUNNER_TEMP/local bin"
           bash assets/install.sh --from-dir "$PWD/assets"
           xcrun stapler validate "$XDG_DATA_HOME/yohey/Yohey.app"
-          lipo -verify_arch arm64 x86_64 "$XDG_DATA_HOME/yohey/Yohey.app/Contents/MacOS/Yohey"
+          archs=$(lipo -archs "$XDG_DATA_HOME/yohey/Yohey.app/Contents/MacOS/Yohey")
+          for arch in arm64 x86_64; do
+            [[ " $archs " == *" $arch "* ]] || { echo "Missing $arch in Yohey (found: $archs)" >&2; exit 1; }
+          done
           test -x "$XDG_BIN_HOME/yohey"
       - uses: actions/upload-artifact@v7
         with:
