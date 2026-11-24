@@ -2,6 +2,7 @@ import AppKit
 import CoreGraphics
 import IOKit.ps
 import IOKit.pwr_mgt
+import ServiceManagement
 import SwiftUI
 
 @main
@@ -82,11 +83,42 @@ struct Yohey: App {
                      destination: URL(string: "x-apple.systempreferences:com.apple.Lock-Screen-Settings.extension")!)
                 Divider()
                 HStack {
+                    Toggle("Start on login", isOn: Binding(
+                        get: { loginStatus == .enabled }, set: setStartOnLogin))
+                        .toggleStyle(.checkbox)
+                        .onAppear { loginStatus = SMAppService.mainApp.status }
                     Spacer()
                     Button("Quit") { NSApp.terminate(nil) }
                 }
+                if loginStatus == .requiresApproval {
+                    Button("Open Login Items Settings…") {
+                        SMAppService.openSystemSettingsLoginItems()
+                    }
+                } else if let loginError {
+                    Text(loginError).font(.caption)
+                }
             }.padding().frame(width: 290)
         }.menuBarExtraStyle(.window)
+    }
+
+    @State private var loginStatus = SMAppService.mainApp.status
+    @State private var loginError: String?
+
+    private func setStartOnLogin(_ enabled: Bool) {
+        let service = SMAppService.mainApp
+        loginError = nil
+        do {
+            if enabled && service.status == .requiresApproval {
+                SMAppService.openSystemSettingsLoginItems()
+            } else if enabled {
+                try service.register()
+            } else {
+                try service.unregister()
+            }
+        } catch {
+            loginError = "Couldn’t change Start on login: \(error.localizedDescription)"
+        }
+        loginStatus = service.status
     }
 
     private func duration(_ minutes: Int) -> String { minutes == 0 ? "Never" : "\(minutes) min" }

@@ -40,6 +40,9 @@ mise build          # universal, locally signed app
 mise dev            # rebuild, quit any running Yohey, and launch the new build
 ```
 
+Settings are saved as you change them. Enable **Start on login** in the bell
+menu to have macOS launch Yohey when you sign in.
+
 Open the bell menu to choose a built-in macOS alert sound, preview it, change
 the timeout, or pause. Yohey remembers your sound choice (default: Sosumi). For a
 quick manual check, uncheck **Match system settings** and set the active
