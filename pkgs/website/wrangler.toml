@@ -1,4 +1,9 @@
 name = "yohey-website"
 compatibility_date = "2026-04-09"
+
+[[routes]]
+pattern = "yohey.fyi"
+custom_domain = true
+
 [assets]
 directory = "./dist"

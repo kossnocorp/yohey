@@ -6,15 +6,18 @@ jobs:
   sign:
     environment: release-app
     runs-on: macos-26
+    env:
+      YOHEY_TEAM_ID: ${{ vars.YOHEY_TEAM_ID }}
+      YOHEY_SIGNING_IDENTITY: ${{ vars.YOHEY_SIGNING_IDENTITY }}
+      YOHEY_NOTARY_PROFILE: yohey-ci
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup
       - name: Check release metadata
         env:
           TEAM: ${{ vars.YOHEY_TEAM_ID }}
-          SIGNING_TEAM: ${{ secrets.YOHEY_TEAM_ID }}
         run: |
-          [[ $TEAM =~ ^[A-Z0-9]{10}$ && $TEAM == "$SIGNING_TEAM" ]]
+          [[ $TEAM =~ ^[A-Z0-9]{10}$ ]]
           [[ $GITHUB_REF_NAME =~ ^app@([0-9]+\.[0-9]+\.[0-9]+)$ ]]
           echo "YOHEY_VERSION=${BASH_REMATCH[1]}" >> "$GITHUB_ENV"
       - name: Import identity and notary credentials
@@ -22,12 +25,9 @@ jobs:
           YOHEY_CERTIFICATE_BASE64: ${{ secrets.YOHEY_CERTIFICATE_BASE64 }}
           YOHEY_CERTIFICATE_PASSWORD: ${{ secrets.YOHEY_CERTIFICATE_PASSWORD }}
           YOHEY_APPLE_ID: ${{ secrets.YOHEY_APPLE_ID }}
-          YOHEY_TEAM_ID: ${{ secrets.YOHEY_TEAM_ID }}
           YOHEY_APPLE_PASSWORD: ${{ secrets.YOHEY_APPLE_PASSWORD }}
         run: bash scripts/macos-ci.sh
       - run: mise notarize
-        env:
-          YOHEY_TEAM_ID: ${{ vars.YOHEY_TEAM_ID }}
       - name: Remove signing credentials
         if: always()
         run: bash scripts/macos-ci.sh cleanup

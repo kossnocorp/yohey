@@ -4,7 +4,7 @@ set -euo pipefail
 
 : "${YOHEY_APPLE_ID:?Set YOHEY_APPLE_ID to your Apple Developer account email}"
 : "${YOHEY_TEAM_ID:?Set YOHEY_TEAM_ID to your Apple Developer team ID}"
-: "${YOHEY_NOTARY_PROFILE:=yohey-notary}"
+: "${YOHEY_NOTARY_PROFILE:?Set the shared Keychain notarization profile}"
 
 args=(
     notarytool store-credentials "$YOHEY_NOTARY_PROFILE"

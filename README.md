@@ -71,5 +71,5 @@ mise //pkgs/website:dev
 mise //pkgs/website:build
 ```
 
-The static Astro site deploys to Cloudflare Workers. `/install.sh` redirects
+The static Astro site deploys to Cloudflare Workers at [yohey.fyi](https://yohey.fyi). `/install.sh` redirects
 to the latest release installer; the installer itself pins its release version.

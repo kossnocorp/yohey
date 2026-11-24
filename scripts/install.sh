@@ -23,7 +23,7 @@ grep -E '^[[:xdigit:]]{64}  Yohey\.zip$' SHA256SUMS > archive.sha256
 shasum -a 256 -c archive.sha256
 ditto -x -k Yohey.zip unpack
 app=unpack/Yohey.app
-codesign --verify --strict -R="anchor apple generic and identifier \"com.kossnocorp.yohey\" and certificate leaf[subject.OU] = \"$team\" and certificate leaf[field.1.2.840.113635.100.6.1.13] exists" "$app"
+codesign --verify --strict -R="anchor apple generic and identifier \"fyi.yohey.app\" and certificate leaf[subject.OU] = \"$team\" and certificate leaf[field.1.2.840.113635.100.6.1.13] exists" "$app"
 spctl --assess --type execute "$app"
 # Preserve the previous installation if the rename fails.
 if [[ -e $data/Yohey.app ]]; then mv "$data/Yohey.app" previous.app; fi

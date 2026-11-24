@@ -3,6 +3,7 @@ import { defineConfig } from "astro/config";
 import { writeFile } from "node:fs/promises";
 
 export default defineConfig({
+  site: "https://yohey.fyi",
   vite: {
     plugins: [tailwindcss()],
   },

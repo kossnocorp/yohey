@@ -2,7 +2,7 @@
 # Submit a signed bundle and produce a stapled archive for distribution.
 set -euo pipefail
 
-: "${YOHEY_NOTARY_PROFILE:=yohey-notary}"
+: "${YOHEY_NOTARY_PROFILE:?Set the shared Keychain notarization profile}"
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 target="$root/build"
 result="$target/notarization-result.json"
