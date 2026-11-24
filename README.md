@@ -73,3 +73,6 @@ mise //pkgs/website:build
 
 The static Astro site deploys to Cloudflare Workers at [yohey.fyi](https://yohey.fyi). `/install.sh` redirects
 to the latest release installer; the installer itself pins its release version.
+From a clean commit, `mise run //:release:website` creates the next local
+`website@YYYY-MM-DD.N` tag, pushes the branch, and pushes all local tags.
+The website tag triggers the Release Website workflow.

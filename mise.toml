@@ -40,5 +40,35 @@ run = 'bash pkgs/macos/scripts/notarize.sh'
 run = 'bash pkgs/macos/scripts/notarize-setup.sh'
 [tasks."release:app"]
 run = 'bash scripts/release.sh'
+
+[tasks."release:version"]
+description = "Tag the next website version for today (YYYY-MM-DD.N) locally"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n $(git status --porcelain --untracked-files=all) ]]; then
+  echo 'Working tree is dirty; commit or stash changes before versioning.' >&2
+  exit 1
+fi
+day=$(date +%Y-%m-%d)
+revision=$(git tag --list "website@$day.*" | awk -F. '
+  $0 ~ /^website@[0-9]{4}-[0-9]{2}-[0-9]{2}[.][0-9]+$/ && $NF + 0 > max { max = $NF + 0 }
+  END { printf "%.0f", max + 1 }
+')
+tag="website@$day.$revision"
+git tag "$tag"
+echo "$tag"
+'''
+
+[tasks."release:website"]
+description = "Version the website, then push commits and tags"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+mise run //:release:version
+git push
+git push --tags
+'''
+
 [tasks."secrets:sync"]
 run = 'bash scripts/sync-secrets.sh'
