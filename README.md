@@ -5,6 +5,10 @@ by default: Yohey checks the battery and adapter display-off timers and the
 password delay every minute. Uncheck it to edit those values, or use refresh
 to copy them once. The menu counts down to display-off and password lock.
 Brightness may dim earlier; macOS does not report that deadline here.
+When an app such as Amphetamine prevents idle display sleep, the menu shows
+**Kept awake**. Display-based reminders pause until the last app
+releases its hold, then resume using current idle time. A separate screen-saver
+lock deadline still counts down.
 
 By default Yohey chimes 60, 30 and 10 seconds before the estimated **password lock**.
 In the bell menu you can set the first reminder (15 seconds to 10 minutes before

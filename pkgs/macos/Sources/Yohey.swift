@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import IOKit.ps
+import IOKit.pwr_mgt
 import SwiftUI
 
 @main
@@ -60,11 +61,20 @@ struct Yohey: App {
                 if let error = monitor.syncError { Text(error).font(.caption) }
                 Text("Power source: \(monitor.power.rawValue)").font(.caption)
                 GroupBox("Estimated time remaining") {
-                    VStack(spacing: 4) {
-                        LabeledContent("Display off", value: monitor.displayClock)
+                    Grid(alignment: .leading, verticalSpacing: 4) {
+                        GridRow {
+                            Text("Display off")
+                            Text(monitor.displayClock)
+                        }
                             .help("macOS exposes the display-off timer. Brightness may dim earlier.")
-                        LabeledContent("Password lock", value: monitor.lockClock)
+                        GridRow {
+                            Text("Password lock")
+                            Text(monitor.lockClock)
+                        }
                     }.monospacedDigit().padding(3)
+                    if let reason = monitor.displayHoldReason {
+                        Text(reason).font(.caption)
+                    }
                 }
                 Text(monitor.status).font(.caption).foregroundStyle(.secondary)
                 Link("Open Lock Screen Settings…",
@@ -150,6 +160,9 @@ private final class Monitor: NSObject, ObservableObject {
     }
     private var saverSeconds: Double?
     private var timeline = LockTimeline()
+    private var displayHeldAwake = false
+    private var nextOwnerCheck: TimeInterval = 0
+    @Published private(set) var displayHoldReason: String?
     @Published private(set) var displayClock = "—"
     @Published private(set) var lockClock = "—"
     @Published private(set) var power = PowerSource.unknown
@@ -317,6 +330,7 @@ private final class Monitor: NSObject, ObservableObject {
 
     @objc private func sample() {
         guard suspended.isEmpty else {
+            displayHoldReason = nil
             displayClock = "—"
             lockClock = suspended.contains("lock") ? "Locked" : "—"
             status = "Reminders paused"
@@ -327,15 +341,34 @@ private final class Monitor: NSObject, ObservableObject {
         guard idle.isFinite, idle >= 0 else {
             displayClock = "—"; lockClock = "—"; status = "Idle time unavailable"; return
         }
-        let display = power == .unknown ? nil : Double(power == .adapter ? adapterMinutes : batteryMinutes) * 60
+        if let held = Self.readDisplayAssertion(), held != displayHeldAwake {
+            displayHeldAwake = held
+            nextOwnerCheck = 0
+            // Start from current idle time; don't replay a boundary from before the change.
+            schedule = WarningSchedule(start: startSeconds, count: reminderCount, spacing: spacing)
+        }
+        let display = power == .unknown || displayHeldAwake ? nil : Double(power == .adapter ? adapterMinutes : batteryMinutes) * 60
         let deadline = timeline.limit(now: ProcessInfo.processInfo.systemUptime, idle: idle,
                                       display: display, saver: saverSeconds, delay: delay)
-        displayClock = timeline.displayIsOff ? "Off" : display.map { $0 == 0 ? "Never" : clock($0 - idle) } ?? "Unknown"
-        lockClock = deadline.map { clock($0 - idle) } ?? (delay == .off ? "Never" : "—")
+        if timeline.displayIsOff { displayClock = "Off" }
+        else if displayHeldAwake { displayClock = "Kept awake" }
+        else { displayClock = display.map { $0 == 0 ? "Never" : clock($0 - idle) } ?? "Unknown" }
+        if displayHeldAwake && !timeline.displayIsOff {
+            let now = ProcessInfo.processInfo.systemUptime
+            if displayHoldReason == nil || now >= nextOwnerCheck {
+                let names = Self.displayAssertionOwners()
+                displayHoldReason = "Kept awake by \(names.isEmpty ? "an app" : names.formatted(.list(type: .and)))."
+                nextOwnerCheck = now + 5
+            }
+        } else if displayHoldReason != nil { displayHoldReason = nil }
+        let pausedByApp = displayHeldAwake && deadline == nil && delay != .off && delay != .unknown
+        lockClock = deadline.map { clock($0 - idle) } ?? (delay == .off ? "Never" : pausedByApp ? "Paused" : "—")
         guard enabled else { status = "Sound reminders off"; return }
         guard let limit = deadline else {
             status = delay == .unknown ? "Waiting for password delay" :
-                (delay == .off ? "No automatic password requirement" : "Waiting for display off or screen saver")
+                (delay == .off ? "No automatic password requirement" :
+                    pausedByApp ? "Reminders resume automatically." :
+                    "Waiting for display off or screen saver")
             return
         }
         if let volume = schedule.chimeVolume(idle: idle, limit: limit, from: startVolume, to: endVolume) {
@@ -347,6 +380,37 @@ private final class Monitor: NSObject, ObservableObject {
             if remaining < 1 { timer?.fireDate = Date(timeIntervalSinceNow: max(0.02, remaining)) }
             status = "Next chime in \(Int(ceil(boundary - idle)))s if idle"
         } else { status = "Waiting for activity" }
+    }
+
+    private static func readDisplayAssertion() -> Bool? {
+        var snapshot: Unmanaged<CFDictionary>?
+        guard IOPMCopyAssertionsStatus(&snapshot) == kIOReturnSuccess,
+              let assertions = snapshot?.takeRetainedValue() as NSDictionary?,
+              let level = assertions[kIOPMAssertPreventUserIdleDisplaySleep] as? NSNumber
+        else { return nil }
+        return level.boolValue
+    }
+
+    private static func displayAssertionOwners() -> [String] {
+        var snapshot: Unmanaged<CFDictionary>?
+        guard IOPMCopyAssertionsByProcess(&snapshot) == kIOReturnSuccess,
+              let processes = snapshot?.takeRetainedValue() as? [NSNumber: [NSDictionary]]
+        else { return [] }
+        var names = Set<String>()
+        for (pid, assertions) in processes where assertions.contains(where: {
+            ($0[kIOPMAssertionTypeKey] as? String) == kIOPMAssertPreventUserIdleDisplaySleep &&
+            ($0[kIOPMAssertionLevelKey] as? NSNumber)?.boolValue == true
+        }) {
+            if let name = NSRunningApplication(processIdentifier: pid.int32Value)?.localizedName {
+                names.insert(name)
+            } else {
+                var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+                if proc_name(pid.int32Value, &buffer, UInt32(buffer.count)) > 0 {
+                    names.insert(String(cString: buffer))
+                }
+            }
+        }
+        return names.sorted()
     }
 
     private func clock(_ seconds: Double) -> String {
