@@ -1,0 +1,51 @@
+---
+import Layout from "#/ui/layouts/Layout.astro";
+const repo = `https://github.com/${process.env.GITHUB_REPOSITORY || "kossnocorp/yohey"}`;
+---
+<Layout title="Yohey — an idle reminder for macOS" description="A gentle chime before your Mac goes idle.">
+  <div class="page"><main>
+    <section class="hero"><h1>Yohey</h1><h2>A heads-up before your Mac locks.</h2>
+      <p>Yohey chimes as your idle limit approaches. Move your mouse or press a key to start the clock again. Walk away, and your Mac locks as usual.</p>
+      <nav><a class="link" href="#install">Install Yohey →</a><a class="link" href={repo}>GitHub ↗</a></nav>
+    </section>
+    <section class="details"><h2>How it works</h2><p>See separate countdowns for display-off and password lock in your menu bar. Choose when reminders start, how many you hear, and their volume. By default, Yohey chimes with 60, 30 and 10 seconds left before the estimated lock.</p></section>
+    <section id="install" class="details"><h2>Get started</h2><p>On macOS 13 or later, install the signed app for your user, then run <code>yohey</code> from your local bin directory.</p>
+      <pre><code>{`curl -fsSL ${repo}/releases/latest/download/install.sh | bash`}</code></pre>
+      <nav><a class="link" href="/install.sh">Installer</a><a class="link" href={`${repo}/releases/latest`}>Download release ↗</a></nav>
+    </section>
+  </main><footer>Yohey · <a class="link" href={repo}>Open source</a></footer></div>
+</Layout>
+<style>
+  @reference "#/ui/styles/global.css";
+  .page {
+    @apply w-full max-w-5xl mx-auto px-6 py-12 sm:px-12 sm:py-20;
+  }
+  main {
+    @apply flex flex-col gap-16;
+  }
+  section {
+    @apply flex flex-col gap-5 max-w-2xl;
+  }
+  h1 {
+    @apply text-5xl sm:text-7xl font-bold text-(--color-heading-1);
+  }
+  h2 {
+    @apply text-xl sm:text-2xl font-semibold text-(--color-heading-2);
+  }
+  p,
+  dd {
+    @apply text-lg text-(--color-text);
+  }
+  nav {
+    @apply flex gap-6;
+  }
+  dt {
+    @apply font-semibold mt-6 mb-2;
+  }
+  pre {
+    @apply overflow-x-auto p-5 rounded-lg border border-(--color-code-border) bg-(--color-code-canvas) text-(--color-code-ink) text-sm;
+  }
+  footer {
+    @apply mt-20 text-sm opacity-70;
+  }
+</style>

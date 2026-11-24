@@ -1,0 +1,12 @@
+/build/
+.build/
+xcuserdata/
+.DS_Store
+node_modules/
+dist/
+.astro/
+.wrangler/
+*.p12
+*.p8
+*.cer
+mise.local.toml

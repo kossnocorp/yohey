@@ -1,0 +1,24 @@
+name: QA
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  app:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
+      - run: mise test && mise build
+      - run: for f in scripts/*.sh pkgs/macos/scripts/*.sh; do bash -n "$f" || exit; done
+  website:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
+        with:
+          enable-node: 'true'
+      - run: mise //pkgs/website:types && mise //pkgs/website:build

@@ -1,0 +1,44 @@
+monorepo_root = true
+[monorepo]
+config_roots = ["pkgs/*"]
+
+[tools]
+node = "24.22.1"
+pnpm = "12.16.1"
+gh = "2.103.3"
+fnox = "1.47.0"
+age = "1.3.1"
+
+[tasks.build]
+run = 'bash pkgs/macos/scripts/build.sh'
+[tasks.dev]
+depends = ['build']
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+if pkill -TERM -U "$UID" -x Yohey; then
+  for ((i=0; i<50; i++)); do
+    pgrep -U "$UID" -x Yohey >/dev/null || break
+    sleep 0.1
+  done
+  if pgrep -U "$UID" -x Yohey >/dev/null; then
+    echo "Yohey did not exit; could not relaunch." >&2
+    exit 1
+  fi
+fi
+open build/Build/Products/Release/Yohey.app
+'''
+[tasks.test]
+run = 'swift test --package-path pkgs/macos'
+[tasks.package]
+depends = ['build']
+run = 'bash pkgs/macos/scripts/package.sh'
+[tasks.notarize]
+depends = ['package']
+run = 'bash pkgs/macos/scripts/notarize.sh'
+[tasks."notarize:setup"]
+run = 'bash pkgs/macos/scripts/notarize-setup.sh'
+[tasks."release:app"]
+run = 'bash scripts/release.sh'
+[tasks."secrets:sync"]
+run = 'bash scripts/sync-secrets.sh'

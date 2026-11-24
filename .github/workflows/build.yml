@@ -1,0 +1,52 @@
+name: Build signed app
+on: workflow_call
+permissions:
+  contents: read
+jobs:
+  sign:
+    environment: release-app
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
+      - name: Check release metadata
+        env:
+          TEAM: ${{ vars.YOHEY_TEAM_ID }}
+          SIGNING_TEAM: ${{ secrets.YOHEY_TEAM_ID }}
+        run: |
+          [[ $TEAM =~ ^[A-Z0-9]{10}$ && $TEAM == "$SIGNING_TEAM" ]]
+          [[ $GITHUB_REF_NAME =~ ^app@([0-9]+\.[0-9]+\.[0-9]+)$ ]]
+          echo "YOHEY_VERSION=${BASH_REMATCH[1]}" >> "$GITHUB_ENV"
+      - name: Import identity and notary credentials
+        env:
+          YOHEY_CERTIFICATE_BASE64: ${{ secrets.YOHEY_CERTIFICATE_BASE64 }}
+          YOHEY_CERTIFICATE_PASSWORD: ${{ secrets.YOHEY_CERTIFICATE_PASSWORD }}
+          YOHEY_APPLE_ID: ${{ secrets.YOHEY_APPLE_ID }}
+          YOHEY_TEAM_ID: ${{ secrets.YOHEY_TEAM_ID }}
+          YOHEY_APPLE_PASSWORD: ${{ secrets.YOHEY_APPLE_PASSWORD }}
+        run: bash scripts/macos-ci.sh
+      - run: mise notarize
+        env:
+          YOHEY_TEAM_ID: ${{ vars.YOHEY_TEAM_ID }}
+      - name: Remove signing credentials
+        if: always()
+        run: bash scripts/macos-ci.sh cleanup
+      - name: Assemble assets
+        env:
+          TEAM: ${{ vars.YOHEY_TEAM_ID }}
+        run: |
+          mkdir assets
+          cp build/Yohey-notarized.zip assets/Yohey.zip
+          sed -e "s|@TEAM_ID@|$TEAM|g" -e "s|@TAG@|$GITHUB_REF_NAME|g" -e "s|@REPOSITORY@|$GITHUB_REPOSITORY|g" scripts/install.sh > assets/install.sh
+          cd assets && shasum -a 256 Yohey.zip install.sh > SHA256SUMS
+      - name: Smoke-test stapled archive and XDG installer
+        run: |
+          export XDG_DATA_HOME="$RUNNER_TEMP/xdg data" XDG_BIN_HOME="$RUNNER_TEMP/local bin"
+          bash assets/install.sh --from-dir "$PWD/assets"
+          xcrun stapler validate "$XDG_DATA_HOME/yohey/Yohey.app"
+          lipo -verify_arch arm64 x86_64 "$XDG_DATA_HOME/yohey/Yohey.app/Contents/MacOS/Yohey"
+          test -x "$XDG_BIN_HOME/yohey"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: yohey-release
+          path: assets/*

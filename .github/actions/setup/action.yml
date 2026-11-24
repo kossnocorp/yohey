@@ -1,0 +1,13 @@
+name: Set up development environment
+description: Install the pinned mise toolchain and optional website dependencies
+inputs:
+  enable-node:
+    description: Install pnpm workspace dependencies
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - uses: jdx/mise-action@v4
+    - if: inputs.enable-node == 'true'
+      shell: bash
+      run: pnpm install --frozen-lockfile

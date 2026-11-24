@@ -1,0 +1,9 @@
+[tasks.dev]
+run = 'pnpm exec astro dev'
+[tasks.build]
+run = 'pnpm exec astro build'
+[tasks.types]
+run = 'pnpm exec astro sync && pnpm exec tsc --noEmit'
+[tasks.deploy]
+depends = ['build']
+run = 'pnpm exec wrangler deploy'

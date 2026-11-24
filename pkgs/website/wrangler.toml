@@ -1,0 +1,4 @@
+name = "yohey-website"
+compatibility_date = "2026-04-09"
+[assets]
+directory = "./dist"
