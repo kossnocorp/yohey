@@ -15,6 +15,7 @@ struct Yohey: App {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Yohey").font(.headline)
                 Toggle("Sound reminders", isOn: $monitor.enabled)
+                Toggle("Flash screen at reminders", isOn: $monitor.flashEnabled)
                 HStack {
                     Picker("Reminder sound", selection: $monitor.soundName) {
                         ForEach(monitor.soundNames, id: \.self) { Text($0).tag($0) }
@@ -144,6 +145,9 @@ private final class Monitor: NSObject, ObservableObject {
     @Published var enabled: Bool {
         didSet { UserDefaults.standard.set(enabled, forKey: "enabled"); reset() }
     }
+    @Published var flashEnabled: Bool {
+        didSet { UserDefaults.standard.set(flashEnabled, forKey: "flashEnabled"); reset() }
+    }
     @Published var batteryMinutes: Int {
         didSet { UserDefaults.standard.set(batteryMinutes, forKey: "batteryMinutes"); reset() }
     }
@@ -203,6 +207,7 @@ private final class Monitor: NSObject, ObservableObject {
         reminderCount = min(25, max(1, defaults.integer(forKey: "reminderCount")))
         spacing = ReminderSpacing(rawValue: defaults.string(forKey: "reminderSpacing") ?? "") ?? .gentle
         enabled = defaults.bool(forKey: "enabled")
+        flashEnabled = defaults.bool(forKey: "flashEnabled")
         matchesSystem = defaults.bool(forKey: "matchesSystem")
         delay = PasswordDelay(stored: defaults.object(forKey: "passwordDelay") as? Int)
         batteryMinutes = max(0, defaults.integer(forKey: "batteryMinutes"))
@@ -363,7 +368,7 @@ private final class Monitor: NSObject, ObservableObject {
         } else if displayHoldReason != nil { displayHoldReason = nil }
         let pausedByApp = displayHeldAwake && deadline == nil && delay != .off && delay != .unknown
         lockClock = deadline.map { clock($0 - idle) } ?? (delay == .off ? "Never" : pausedByApp ? "Paused" : "—")
-        guard enabled else { status = "Sound reminders off"; return }
+        guard enabled || flashEnabled else { status = "Reminders off"; return }
         guard let limit = deadline else {
             status = delay == .unknown ? "Waiting for password delay" :
                 (delay == .off ? "No automatic password requirement" :
@@ -372,14 +377,37 @@ private final class Monitor: NSObject, ObservableObject {
             return
         }
         if let volume = schedule.chimeVolume(idle: idle, limit: limit, from: startVolume, to: endVolume) {
-            play(volume: volume)
+            if enabled { play(volume: volume) }
+            if flashEnabled && !timeline.displayIsOff { flashScreens() }
         }
         if let boundary = schedule.nextBoundary(idle: idle, limit: limit) {
             // Wake for fractional boundaries without polling rapidly all day.
             let remaining = boundary - idle
             if remaining < 1 { timer?.fireDate = Date(timeIntervalSinceNow: max(0.02, remaining)) }
-            status = "Next chime in \(Int(ceil(boundary - idle)))s if idle"
+            status = "Next reminder in \(Int(ceil(boundary - idle)))s if idle"
         } else { status = "Waiting for activity" }
+    }
+
+    private func flashScreens() {
+        for screen in NSScreen.screens {
+            let overlay = NSWindow(contentRect: screen.frame, styleMask: .borderless,
+                                   backing: .buffered, defer: false)
+            overlay.isReleasedWhenClosed = false
+            overlay.isOpaque = false
+            overlay.backgroundColor = .white
+            overlay.alphaValue = 0.18
+            overlay.hasShadow = false
+            overlay.ignoresMouseEvents = true
+            overlay.level = .screenSaver
+            overlay.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+            overlay.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.25
+                overlay.animator().alphaValue = 0
+            } completionHandler: {
+                overlay.close()
+            }
+        }
     }
 
     private static func readDisplayAssertion() -> Bool? {

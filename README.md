@@ -18,6 +18,8 @@ lock), the number of reminders (1–25), and their playback volume. Choose
 The first chime uses **Start volume** and the last uses **End volume**;
 intermediate chimes follow the selected spacing curve. Equal levels keep
 volume constant. Preview and single-reminder schedules use End volume.
+Enable **Flash screen at reminders** for a brief visual cue on each display at
+the same reminder times. It is off by default and works with sound muted.
 The first observed display-off or screen-saver start anchors the password
 grace period. Real input resets the idle cycle. A password setting of **Never**
 silences lock reminders. Yohey can chime while only the display is off, but
