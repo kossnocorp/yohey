@@ -50,6 +50,13 @@ final class WarningScheduleTests: XCTestCase {
         XCTAssertGreaterThan(urgent.nextBoundary(idle: 0, limit: 60)!,
                              gentle.nextBoundary(idle: 0, limit: 60)!)
     }
+    func testHundredRemindersFitShortestWindow() {
+        for spacing in ReminderSpacing.allCases {
+            var schedule = WarningSchedule(start: 15, count: 100, spacing: spacing)
+            let chimes = (0...3000).filter { schedule.shouldChime(idle: Double($0) / 100, limit: 30) }
+            XCTAssertEqual(chimes.count, 100)
+        }
+    }
     func testConfigurableScheduleMatchesCountdown() {
         for (start, count, expected) in [(120, 1, [180]), (15, 5, [285, 290, 294, 297, 299])] {
             var schedule = WarningSchedule(start: start, count: count)

@@ -33,7 +33,7 @@ struct Yohey: App {
                     }
                 }
                 Stepper("Number of reminders: \(monitor.reminderCount)",
-                        value: $monitor.reminderCount, in: 1...25)
+                        value: $monitor.reminderCount, in: 1...Monitor.maxReminders)
                 Picker("Reminder spacing", selection: $monitor.spacing) {
                     ForEach(ReminderSpacing.allCases, id: \.self) { Text($0.label).tag($0) }
                 }.disabled(monitor.reminderCount == 1)
@@ -127,6 +127,7 @@ private final class Monitor: NSObject, ObservableObject {
     }
     private var playingSound: NSSound?
     static let startOptions = [15, 30, 60, 120, 300, 600]
+    static let maxReminders = 100
     @Published var startVolume: Double {
         didSet { UserDefaults.standard.set(startVolume, forKey: "startVolume") }
     }
@@ -204,7 +205,7 @@ private final class Monitor: NSObject, ObservableObject {
         endVolume = min(1, max(0, defaults.double(forKey: "endVolume")))
         let start = defaults.integer(forKey: "startSeconds")
         startSeconds = Self.startOptions.contains(start) ? start : 60
-        reminderCount = min(25, max(1, defaults.integer(forKey: "reminderCount")))
+        reminderCount = min(Self.maxReminders, max(1, defaults.integer(forKey: "reminderCount")))
         spacing = ReminderSpacing(rawValue: defaults.string(forKey: "reminderSpacing") ?? "") ?? .gentle
         enabled = defaults.bool(forKey: "enabled")
         flashEnabled = defaults.bool(forKey: "flashEnabled")
@@ -388,7 +389,12 @@ private final class Monitor: NSObject, ObservableObject {
         } else { status = "Waiting for activity" }
     }
 
+    private var nextFlashTime: TimeInterval = 0
+
     private func flashScreens() {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now >= nextFlashTime else { return }
+        nextFlashTime = now + 0.35
         for screen in NSScreen.screens {
             let overlay = NSWindow(contentRect: screen.frame, styleMask: .borderless,
                                    backing: .buffered, defer: false)

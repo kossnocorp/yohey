@@ -12,14 +12,15 @@ lock deadline still counts down.
 
 By default Yohey chimes 60, 30 and 10 seconds before the estimated **password lock**.
 In the bell menu you can set the first reminder (15 seconds to 10 minutes before
-lock), the number of reminders (1–25), and their playback volume. Choose
+lock), the number of reminders (1–100), and their playback volume. Choose
 **Steady** for equal gaps, **Gentle build-up** for gradually shorter gaps
 (the default), or **Urgent build-up** for chimes concentrated near lock.
 The first chime uses **Start volume** and the last uses **End volume**;
 intermediate chimes follow the selected spacing curve. Equal levels keep
 volume constant. Preview and single-reminder schedules use End volume.
 Enable **Flash screen at reminders** for a brief visual cue on each display at
-the same reminder times. It is off by default and works with sound muted.
+the same reminder times. Flashes are spaced at least 0.35 seconds apart on dense
+schedules. This option is off by default and works with sound muted.
 The first observed display-off or screen-saver start anchors the password
 grace period. Real input resets the idle cycle. A password setting of **Never**
 silences lock reminders. Yohey can chime while only the display is off, but
