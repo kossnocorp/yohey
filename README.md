@@ -72,6 +72,9 @@ mise exec -- fnox exec -- mise notarize
 
 The stapled archive is `build/Yohey-notarized.zip`. GitHub runs the same build
 on `app@X.Y.Z`, taking the app version from the tag.
+To roll back an app release, run `mise run //:release/app:rollback X.Y.Z`.
+This removes the GitHub release (if published) and its remote and local tags,
+leaving commits intact. It also works when CI failed before publishing.
 
 ## Website
 

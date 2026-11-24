@@ -41,6 +41,11 @@ run = 'bash pkgs/macos/scripts/notarize-setup.sh'
 [tasks."release:app"]
 run = 'bash scripts/release.sh'
 
+[tasks."release/app:rollback"]
+description = "Remove an app release and its remote and local tags"
+usage = 'arg "<version>" help="App version (X.Y.Z)"'
+run = 'bash scripts/rollback-app.sh "$usage_version"'
+
 [tasks."release:version"]
 description = "Tag the next website version for today (YYYY-MM-DD.N) locally"
 run = '''

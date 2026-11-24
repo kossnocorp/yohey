@@ -8,6 +8,14 @@ if [[ ${1:-} == cleanup ]]; then
   rm -f "$RUNNER_TEMP/yohey.p12"
   exit
 fi
+missing=()
+for name in YOHEY_CERTIFICATE_BASE64 YOHEY_CERTIFICATE_PASSWORD YOHEY_APPLE_ID YOHEY_APPLE_PASSWORD; do
+  [[ -n ${!name:-} ]] || missing+=("$name")
+done
+if (( ${#missing[@]} )); then
+  echo "::error::Missing signing inputs from the release-app environment: ${missing[*]}" >&2
+  exit 1
+fi
 umask 077
 printf %s "${YOHEY_CERTIFICATE_BASE64:?}" | base64 -D > "$RUNNER_TEMP/yohey.p12"
 password=$(openssl rand -hex 32)
