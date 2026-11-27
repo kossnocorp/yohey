@@ -80,4 +80,19 @@ final class WarningScheduleTests: XCTestCase {
         XCTAssertTrue(schedule.shouldChime(idle: 290, limit: 300))
         XCTAssertFalse(schedule.shouldChime(idle: 290.5, limit: 300))
     }
+
+    func testOneShotWakesAfterInputBetweenChecks() throws {
+        var schedule = WarningSchedule()
+        var now = 0.0, wakes = 0
+        var chimes: [Double] = []
+        // Input 100 seconds into an otherwise uninterrupted 239-second sleep.
+        while now < 400 {
+            let idle = now < 100 ? now : now - 100
+            if schedule.shouldChime(idle: idle, limit: 300) { chimes.append(now) }
+            now += try XCTUnwrap(schedule.nextCheck(idle: idle, limit: 300))
+            wakes += 1
+        }
+        XCTAssertEqual(chimes, [340, 370, 390])
+        XCTAssertLessThan(wakes, 12)
+    }
 }

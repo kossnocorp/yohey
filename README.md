@@ -3,22 +3,27 @@
 A SwiftUI menu-bar app for macOS 13 and later. **Match system settings** is on
 by default: Yohey checks the battery and adapter display-off timers and the
 password delay every minute. Uncheck it to edit those values, or use refresh
-to copy them once. The menu counts down to display-off and password lock.
+to copy them once. Click the bell for **Lock reminders**, **Play sound**,
+**Flash screen**, and **Preferences…**. Option-click it for live display-off and
+password-lock countdowns. Release Option after opening; close the popup to stop
+live updates. Right-click or Control-click the bell to toggle all lock reminders
+without opening the menu. A checkmark means the option is on; selecting it
+toggles the option and closes the menu. Background checks are scheduled around potential reminders.
 Brightness may dim earlier; macOS does not report that deadline here.
-When an app such as Amphetamine prevents idle display sleep, the menu shows
+When an app such as Amphetamine prevents idle display sleep, the Option-click view shows
 **Kept awake**. Display-based reminders pause until the last app
 releases its hold, then resume using current idle time. A separate screen-saver
 lock deadline still counts down.
 
 By default Yohey chimes 60, 30 and 10 seconds before the estimated **password lock**.
-In the bell menu you can set the first reminder (15 seconds to 10 minutes before
+In Preferences you can set the first reminder (15 seconds to 10 minutes before
 lock), the number of reminders (1–100), and their playback volume. Choose
 **Steady** for equal gaps, **Gentle build-up** for gradually shorter gaps
 (the default), or **Urgent build-up** for chimes concentrated near lock.
 The first chime uses **Start volume** and the last uses **End volume**;
 intermediate chimes follow the selected spacing curve. Equal levels keep
 volume constant. Preview and single-reminder schedules use End volume.
-Enable **Flash screen at reminders** for a brief visual cue on each display at
+Enable **Flash screen** for a brief visual cue on each display at
 the same reminder times. Flashes are spaced at least 0.35 seconds apart on dense
 schedules. This option is off by default and works with sound muted.
 The first observed display-off or screen-saver start anchors the password
@@ -40,11 +45,11 @@ mise build          # universal, locally signed app
 mise dev            # rebuild, quit any running Yohey, and launch the new build
 ```
 
-Settings are saved as you change them. Enable **Start on login** in the bell
-menu to have macOS launch Yohey when you sign in.
+Settings are saved as you change them. Enable **Start on login** in Preferences
+to have macOS launch Yohey when you sign in.
 
-Open the bell menu to choose a built-in macOS alert sound, preview it, change
-the timeout, or pause. Yohey remembers your sound choice (default: Sosumi). For a
+Open Preferences to choose a built-in macOS alert sound, preview it, or change
+the timeout. Yohey remembers your sound choice (default: Sosumi). For a
 quick manual check, uncheck **Match system settings** and set the active
 limit to 1 minute and the password delay to Immediately: expect chimes at 30 and 50
 seconds of inactivity. Move the mouse between chimes and check that the

@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import CoreGraphics
 import IOKit.ps
 import IOKit.pwr_mgt
@@ -7,16 +8,116 @@ import SwiftUI
 
 @main
 struct Yohey: App {
-    @StateObject private var monitor = Monitor()
+    @NSApplicationDelegateAdaptor(MenuController.self) private var controller
+    var body: some Scene { Settings { EmptyView() } }
+}
 
-    var body: some Scene {
-        // Start the sampler when the scene is installed, before the first click.
-        let monitor = self.monitor
-        return MenuBarExtra("Yohey", systemImage: "bell.badge") {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Yohey").font(.headline)
-                Toggle("Sound reminders", isOn: $monitor.enabled)
-                Toggle("Flash screen at reminders", isOn: $monitor.flashEnabled)
+@MainActor
+private final class MenuController: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
+    private let monitor = Monitor()
+    private var item: NSStatusItem!
+    private var preferences: NSWindow?
+    private var diagnosticBindings = Set<AnyCancellable>()
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        updateIcon()
+        listenForClick()
+    }
+
+    private func listenForClick() {
+        item.button?.target = self
+        item.button?.action = #selector(togglePopup)
+        item.button?.sendAction(on: [.leftMouseDown, .rightMouseDown])
+    }
+
+    private func updateIcon() {
+        item.button?.appearsDisabled = !monitor.remindersEnabled
+        item.button?.image = NSImage(systemSymbolName: monitor.remindersEnabled ? "bell.badge" : "bell.slash",
+                                     accessibilityDescription: monitor.remindersEnabled ? "Yohey: reminders on" : "Yohey: reminders off")
+    }
+
+    @objc private func togglePopup() {
+        guard let button = item.button else { return }
+        let event = NSApp.currentEvent
+        if event?.type == .rightMouseDown || (event?.type == .leftMouseDown && event?.modifierFlags.contains(.control) == true) {
+            toggleReminders()
+            return
+        }
+        // Read the physical modifier at mouse-down, before AppKit starts menu tracking.
+        let details = CGEventSource.flagsState(.combinedSessionState).contains(.maskAlternate)
+            || event?.modifierFlags.contains(.option) == true
+        monitor.setDiagnostics(details)
+        let menu = NSMenu()
+        menu.delegate = self
+        menu.autoenablesItems = false
+        func addCheck(_ title: String, _ on: Bool, _ action: Selector) {
+            let entry = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
+            entry.target = self
+            entry.state = on ? .on : .off
+        }
+        addCheck("Lock reminders", monitor.remindersEnabled, #selector(toggleReminders))
+        menu.addItem(.separator())
+        addCheck("Play sound", monitor.enabled, #selector(toggleSound))
+        addCheck("Flash screen", monitor.flashEnabled, #selector(toggleFlash))
+        menu.addItem(.separator())
+        if details {
+            func addStat<P: Publisher>(_ titles: P) where P.Output == String, P.Failure == Never {
+                let row = menu.addItem(withTitle: "", action: nil, keyEquivalent: "")
+                row.isEnabled = false
+                titles.removeDuplicates().assign(to: \.title, on: row).store(in: &diagnosticBindings)
+            }
+            addStat(monitor.$power.map { "Power source: \($0.rawValue)" })
+            addStat(monitor.$displayHoldReason.combineLatest(monitor.$displayClock)
+                .map { "Display off: \($0 ?? $1)" })
+            addStat(monitor.$lockClock.map { "Password lock: \($0)" })
+            addStat(monitor.$status)
+            menu.addItem(.separator())
+        }
+        menu.addItem(withTitle: "Preferences…", action: #selector(showPreferences), keyEquivalent: ",").target = self
+        menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q").target = NSApp
+        item.menu = menu
+        button.performClick(nil)
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        diagnosticBindings.removeAll()
+        monitor.setDiagnostics(false)
+        item.menu = nil
+        listenForClick()
+    }
+
+    @objc private func toggleReminders() {
+        monitor.remindersEnabled.toggle()
+        updateIcon()
+    }
+    @objc private func toggleSound() { monitor.enabled.toggle() }
+    @objc private func toggleFlash() { monitor.flashEnabled.toggle() }
+
+    @objc private func showPreferences() {
+        if preferences == nil {
+            let window = NSWindow(contentViewController: NSHostingController(rootView: Preferences(monitor: monitor)))
+            window.styleMask = [.titled, .closable, .miniaturizable]
+            window.title = "Yohey Preferences"
+            window.delegate = self
+            window.isReleasedWhenClosed = false
+            window.center()
+            preferences = window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        monitor.setPreferencesVisible(true)
+        preferences?.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) { monitor.setPreferencesVisible(false) }
+}
+
+private struct Preferences: View {
+    @ObservedObject var monitor: Monitor
+
+    var body: some View {
+        Form {
+            Section("Reminders") {
                 HStack {
                     Picker("Reminder sound", selection: $monitor.soundName) {
                         ForEach(monitor.soundNames, id: \.self) { Text($0).tag($0) }
@@ -38,6 +139,8 @@ struct Yohey: App {
                 Picker("Reminder spacing", selection: $monitor.spacing) {
                     ForEach(ReminderSpacing.allCases, id: \.self) { Text($0.label).tag($0) }
                 }.disabled(monitor.reminderCount == 1)
+            }
+            Section("Lock screen") {
                 HStack {
                     Toggle("Match system settings", isOn: $monitor.matchesSystem)
                         .toggleStyle(.checkbox)
@@ -61,35 +164,14 @@ struct Yohey: App {
                 .disabled(monitor.matchesSystem)
                 .foregroundStyle(monitor.matchesSystem ? .secondary : .primary)
                 if let error = monitor.syncError { Text(error).font(.caption) }
-                Text("Power source: \(monitor.power.rawValue)").font(.caption)
-                GroupBox("Estimated time remaining") {
-                    Grid(alignment: .leading, verticalSpacing: 4) {
-                        GridRow {
-                            Text("Display off")
-                            Text(monitor.displayClock)
-                        }
-                            .help("macOS exposes the display-off timer. Brightness may dim earlier.")
-                        GridRow {
-                            Text("Password lock")
-                            Text(monitor.lockClock)
-                        }
-                    }.monospacedDigit().padding(3)
-                    if let reason = monitor.displayHoldReason {
-                        Text(reason).font(.caption)
-                    }
-                }
-                Text(monitor.status).font(.caption).foregroundStyle(.secondary)
                 Link("Open Lock Screen Settings…",
                      destination: URL(string: "x-apple.systempreferences:com.apple.Lock-Screen-Settings.extension")!)
-                Divider()
-                HStack {
+            }
+            Section("General") {
                     Toggle("Start on login", isOn: Binding(
                         get: { loginStatus == .enabled }, set: setStartOnLogin))
                         .toggleStyle(.checkbox)
                         .onAppear { loginStatus = SMAppService.mainApp.status }
-                    Spacer()
-                    Button("Quit") { NSApp.terminate(nil) }
-                }
                 if loginStatus == .requiresApproval {
                     Button("Open Login Items Settings…") {
                         SMAppService.openSystemSettingsLoginItems()
@@ -97,8 +179,8 @@ struct Yohey: App {
                 } else if let loginError {
                     Text(loginError).font(.caption)
                 }
-            }.padding().frame(width: 290)
-        }.menuBarExtraStyle(.window)
+            }
+        }.formStyle(.grouped).frame(width: 440, height: 600)
     }
 
     @State private var loginStatus = SMAppService.mainApp.status
@@ -176,11 +258,17 @@ private final class Monitor: NSObject, ObservableObject {
         didSet { UserDefaults.standard.set(spacing.rawValue, forKey: "reminderSpacing"); reset() }
     }
     @Published var enabled: Bool {
-        didSet { UserDefaults.standard.set(enabled, forKey: "enabled"); reset() }
+        didSet { UserDefaults.standard.set(enabled, forKey: "enabled"); updateSync(); reset() }
     }
     @Published var flashEnabled: Bool {
-        didSet { UserDefaults.standard.set(flashEnabled, forKey: "flashEnabled"); reset() }
+        didSet { UserDefaults.standard.set(flashEnabled, forKey: "flashEnabled"); updateSync(); reset() }
     }
+    @Published var remindersEnabled: Bool {
+        didSet { UserDefaults.standard.set(remindersEnabled, forKey: "remindersEnabled"); updateSync(); reset() }
+    }
+    private var canRemind: Bool { remindersEnabled && (enabled || flashEnabled) }
+    private var diagnostics = false
+    private var preferencesVisible = false
     @Published var batteryMinutes: Int {
         didSet { UserDefaults.standard.set(batteryMinutes, forKey: "batteryMinutes"); reset() }
     }
@@ -198,7 +286,6 @@ private final class Monitor: NSObject, ObservableObject {
     private var saverSeconds: Double?
     private var timeline = LockTimeline()
     private var displayHeldAwake = false
-    private var nextOwnerCheck: TimeInterval = 0
     @Published private(set) var displayHoldReason: String?
     @Published private(set) var displayClock = "—"
     @Published private(set) var lockClock = "—"
@@ -239,8 +326,10 @@ private final class Monitor: NSObject, ObservableObject {
         startSeconds = Self.startOptions.contains(start) ? start : 60
         reminderCount = min(Self.maxReminders, max(1, defaults.integer(forKey: "reminderCount")))
         spacing = ReminderSpacing(rawValue: defaults.string(forKey: "reminderSpacing") ?? "") ?? .gentle
-        enabled = defaults.bool(forKey: "enabled")
-        flashEnabled = defaults.bool(forKey: "flashEnabled")
+        let sound = defaults.bool(forKey: "enabled"), flash = defaults.bool(forKey: "flashEnabled")
+        enabled = sound
+        flashEnabled = flash
+        remindersEnabled = defaults.object(forKey: "remindersEnabled") as? Bool ?? (sound || flash)
         matchesSystem = defaults.bool(forKey: "matchesSystem")
         delay = PasswordDelay(stored: defaults.object(forKey: "passwordDelay") as? Int)
         batteryMinutes = max(0, defaults.integer(forKey: "batteryMinutes"))
@@ -267,12 +356,26 @@ private final class Monitor: NSObject, ObservableObject {
             DistributedNotificationCenter.default().addObserver(self, selector: #selector(stateChanged),
                 name: Notification.Name(name), object: nil)
         }
-        let timer = Timer(timeInterval: 1, target: self, selector: #selector(sample),
-                          userInfo: nil, repeats: true)
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
         configureSync()
         sample()
+    }
+
+    func setDiagnostics(_ visible: Bool) {
+        guard diagnostics != visible else { return }
+        diagnostics = visible
+        updateSync()
+        sample()
+    }
+
+    func setPreferencesVisible(_ visible: Bool) {
+        preferencesVisible = visible
+        updateSync()
+    }
+
+    private func updateSync() {
+        if (syncTimer != nil) != (matchesSystem && (canRemind || diagnostics || preferencesVisible)) {
+            configureSync()
+        }
     }
 
     private func configureSync() {
@@ -281,7 +384,7 @@ private final class Monitor: NSObject, ObservableObject {
         syncTask?.cancel()
         syncing = false
         syncError = nil
-        guard matchesSystem else { return }
+        guard matchesSystem && (canRemind || diagnostics || preferencesVisible) else { return }
         syncLimits()
         let timer = Timer(timeInterval: 60, target: self, selector: #selector(syncLimits),
                           userInfo: nil, repeats: true)
@@ -330,7 +433,7 @@ private final class Monitor: NSObject, ObservableObject {
             timeline = LockTimeline()
             suspended.remove("sleep")
             refreshPower()
-            if matchesSystem { syncLimits() }
+            if syncTimer != nil { syncLimits() }
         case NSWorkspace.sessionDidResignActiveNotification: suspended.insert("session")
         case NSWorkspace.sessionDidBecomeActiveNotification: suspended.remove("session")
         case Notification.Name("com.apple.screenIsLocked"): suspended.insert("lock")
@@ -367,58 +470,87 @@ private final class Monitor: NSObject, ObservableObject {
     }
 
     @objc private func sample() {
+        timer?.invalidate()
+        timer = nil
+        guard diagnostics || canRemind else { return }
+        var nextCheck: Double? = diagnostics ? 1 : nil
+        defer {
+            if let nextCheck {
+                let wake = Timer(timeInterval: nextCheck, target: self, selector: #selector(sample),
+                                 userInfo: nil, repeats: false)
+                RunLoop.main.add(wake, forMode: .common)
+                timer = wake
+            }
+        }
         guard suspended.isEmpty else {
-            displayHoldReason = nil
-            displayClock = "—"
-            lockClock = suspended.contains("lock") ? "Locked" : "—"
-            status = "Reminders paused"
+            if diagnostics {
+                displayHoldReason = nil
+                displayClock = "—"
+                lockClock = suspended.contains("lock") ? "Locked" : "—"
+                status = "Reminders paused"
+            }
             return
         }
+        if !diagnostics, delay == .off || delay == .unknown { return }
         let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState,
             eventType: CGEventType(rawValue: UInt32.max)!)
         guard idle.isFinite, idle >= 0 else {
-            displayClock = "—"; lockClock = "—"; status = "Idle time unavailable"; return
+            if diagnostics { displayHoldReason = nil; displayClock = "—"; lockClock = "—"; status = "Idle time unavailable" }
+            nextCheck = diagnostics ? 1 : 3
+            return
         }
-        if let held = Self.readDisplayAssertion(), held != displayHeldAwake {
-            displayHeldAwake = held
-            nextOwnerCheck = 0
-            // Start from current idle time; don't replay a boundary from before the change.
-            schedule = WarningSchedule(start: startSeconds, count: reminderCount, spacing: spacing)
-        }
-        let display = power == .unknown || displayHeldAwake ? nil : Double(power == .adapter ? adapterMinutes : batteryMinutes) * 60
-        let deadline = timeline.limit(now: ProcessInfo.processInfo.systemUptime, idle: idle,
-                                      display: display, saver: saverSeconds, delay: delay)
-        if timeline.displayIsOff { displayClock = "Off" }
-        else if displayHeldAwake { displayClock = "Kept awake" }
-        else { displayClock = display.map { $0 == 0 ? "Never" : clock($0 - idle) } ?? "Unknown" }
-        if displayHeldAwake && !timeline.displayIsOff {
-            let now = ProcessInfo.processInfo.systemUptime
-            if displayHoldReason == nil || now >= nextOwnerCheck {
-                let names = Self.displayAssertionOwners()
-                displayHoldReason = "Kept awake by \(names.isEmpty ? "an app" : names.formatted(.list(type: .and)))."
-                nextOwnerCheck = now + 5
+        let now = ProcessInfo.processInfo.systemUptime
+        let display = power == .unknown ? nil : Double(power == .adapter ? adapterMinutes : batteryMinutes) * 60
+        let normal = timeline.limit(now: now, idle: idle,
+                                       display: display, saver: saverSeconds, delay: delay)
+        let held = timeline.limit(now: now, idle: idle, display: nil, saver: saverSeconds, delay: delay)
+        let candidates = [normal, held].compactMap { $0 }
+        if canRemind {
+            for limit in candidates {
+                if let check = schedule.nextCheck(idle: idle, limit: limit) {
+                    nextCheck = min(nextCheck ?? check, check)
+                }
             }
-        } else if displayHoldReason != nil { displayHoldReason = nil }
-        let pausedByApp = displayHeldAwake && deadline == nil && delay != .off && delay != .unknown
-        lockClock = deadline.map { clock($0 - idle) } ?? (delay == .off ? "Never" : pausedByApp ? "Paused" : "—")
-        guard enabled || flashEnabled else { status = "Reminders off"; return }
+        }
+        let inWarningWindow = candidates.contains { idle >= $0 - Double(startSeconds) - 2 && idle < $0 }
+        if diagnostics || (inWarningWindow && normal != held) {
+            if let active = Self.readDisplayAssertion(), active != displayHeldAwake {
+                displayHeldAwake = active
+                if normal != held {
+                    schedule = WarningSchedule(start: startSeconds, count: reminderCount, spacing: spacing)
+                }
+            }
+        }
+        let deadline = displayHeldAwake ? held : normal
+        if diagnostics {
+            if timeline.displayIsOff { displayClock = "Off" }
+            else if displayHeldAwake { displayClock = "Kept awake" }
+            else { displayClock = display.map { $0 == 0 ? "Never" : clock($0 - idle) } ?? "Unknown" }
+            if displayHeldAwake && !timeline.displayIsOff {
+                let names = Self.displayAssertionOwners()
+                displayHoldReason = "Kept awake by \(names.isEmpty ? "an app" : names.formatted(.list(type: .and)))"
+            } else { displayHoldReason = nil }
+            let paused = displayHeldAwake && deadline == nil && delay != .off && delay != .unknown
+            lockClock = deadline.map { clock($0 - idle) } ?? (delay == .off ? "Never" : paused ? "Paused" : "—")
+        }
+        guard canRemind else { if diagnostics { status = "Reminders off" }; return }
         guard let limit = deadline else {
-            status = delay == .unknown ? "Waiting for password delay" :
-                (delay == .off ? "No automatic password requirement" :
-                    pausedByApp ? "Reminders resume automatically." :
-                    "Waiting for display off or screen saver")
+            if diagnostics {
+                status = delay == .unknown ? "Waiting for password delay" :
+                    (delay == .off ? "No automatic password requirement" :
+                        displayHeldAwake ? "Reminders resume automatically." : "Waiting for display off or screen saver")
+            }
             return
         }
         if let volume = schedule.chimeVolume(idle: idle, limit: limit, from: startVolume, to: endVolume) {
             if enabled { play(volume: volume) }
             if flashEnabled && !timeline.displayIsOff { flashScreens() }
         }
-        if let boundary = schedule.nextBoundary(idle: idle, limit: limit) {
-            // Wake for fractional boundaries without polling rapidly all day.
-            let remaining = boundary - idle
-            if remaining < 1 { timer?.fireDate = Date(timeIntervalSinceNow: max(0.02, remaining)) }
-            status = "Next reminder in \(Int(ceil(boundary - idle)))s if idle"
-        } else { status = "Waiting for activity" }
+        if diagnostics {
+            status = schedule.nextBoundary(idle: idle, limit: limit).map {
+                "Next reminder in \(Int(ceil($0 - idle)))s if idle"
+            } ?? "Waiting for activity"
+        }
     }
 
     private var nextFlashTime: TimeInterval = 0

@@ -44,6 +44,15 @@ struct WarningSchedule {
         leads.lazy.map { limit - $0 }.first { $0 > idle }
     }
 
+    /// Wake once just before a distant boundary to establish the baseline used by
+    /// chimeVolume. Input may restart an idle cycle while we're asleep, so never
+    /// sleep past the first reachable reminder of a fresh cycle.
+    func nextCheck(idle: Double, limit: Double) -> Double? {
+        guard let first = nextBoundary(idle: 0, limit: limit) else { return nil }
+        let wait = min(first, nextBoundary(idle: idle, limit: limit).map { $0 - idle } ?? first)
+        return max(0.02, wait > 2 ? wait - 1 : wait)
+    }
+
     /// Sample once per second. A gap, an input reset, or a new schedule
     /// establishes a baseline rather than replaying a missed warning.
     mutating func chimeVolume(idle: Double, limit: Double, from start: Double, to end: Double) -> Double? {
